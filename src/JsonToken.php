@@ -43,11 +43,17 @@ class JsonToken
     /** @var KeyInterface|null $key */
     protected $key = null;
 
-    /** @var string $purpose */
-    protected $purpose = '';
+    /** @var Purpose $purpose */
+    protected $purpose;
 
     /** @var string $version */
     protected $version = Version2::HEADER;
+
+    public function __construct()
+    {
+        // this is overridden in named constructors
+        $this->purpose = new Purpose('local');
+    }
 
     /**
      * @param SymmetricKey $key
@@ -61,7 +67,7 @@ class JsonToken
         $instance = new static();
         $instance->key = $key;
         $instance->version = $version;
-        $instance->purpose = 'local';
+        $instance->purpose = new Purpose('local');
         return $instance;
     }
 
@@ -77,7 +83,7 @@ class JsonToken
         $instance = new static();
         $instance->key = $key;
         $instance->version = $version;
-        $instance->purpose = 'public';
+        $instance->purpose = new Purpose('public');
         return $instance;
     }
 
@@ -360,26 +366,21 @@ class JsonToken
     public function setKey(KeyInterface $key, bool $checkPurpose = false): self
     {
         if ($checkPurpose) {
-            switch ($this->purpose) {
+            if (!isset($this->purpose)) {
+                throw new InvalidKeyException('Unknown purpose');
+            } elseif (!$this->purpose->isSendingKeyValid($key)) {
+                throw new InvalidKeyException(
+                    'Invalid key type. Expected ' .
+                        $this->purpose->expectedSendingKeyType() .
+                        ', got ' .
+                        \get_class($key)
+                );
+            }
+
+            switch ($this->purpose->rawString()) {
                 case 'local':
-                    if (!($key instanceof SymmetricKey)) {
-                        throw new InvalidKeyException(
-                            'Invalid key type. Expected ' .
-                                SymmetricKey::class .
-                                ', got ' .
-                                \get_class($key)
-                        );
-                    }
                     break;
                 case 'public':
-                    if (!($key instanceof AsymmetricSecretKey)) {
-                        throw new InvalidKeyException(
-                            'Invalid key type. Expected ' .
-                                AsymmetricSecretKey::class .
-                                ', got ' .
-                                \get_class($key)
-                        );
-                    }
                     if (!\hash_equals($this->version, $key->getProtocol())) {
                         throw new InvalidKeyException(
                             'Invalid key type. This key is for ' .
@@ -417,39 +418,30 @@ class JsonToken
 
     /**
      * Set the purpose for this token. Allowed values:
-     * 'local', 'public'.
+     * new Purpose('local'), new Purpose('public').
      *
-     * @param string $purpose
+     * @param Purpose $purpose
      * @param bool $checkKeyType
      * @return self
      * @throws InvalidKeyException
      * @throws InvalidPurposeException
      */
-    public function setPurpose(string $purpose, bool $checkKeyType = false): self
+    public function setPurpose(Purpose $purpose, bool $checkKeyType = false): self
     {
         if ($checkKeyType) {
             if (\is_null($this->key)) {
                 throw new InvalidKeyException('Key cannot be null');
             }
-            $keyType = \get_class($this->key);
-            switch ($keyType) {
-                case SymmetricKey::class:
-                    if (!\hash_equals('local', $purpose)) {
-                        throw new InvalidPurposeException(
-                            'Invalid purpose. Expected local, got ' . $purpose
-                        );
-                    }
-                    break;
-                case AsymmetricSecretKey::class:
-                    if (!\hash_equals('public', $purpose)) {
-                        throw new InvalidPurposeException(
-                            'Invalid purpose. Expected public, got ' . $purpose
-                        );
-                    }
-                    break;
-                default:
-                    throw new InvalidPurposeException('Unknown purpose: ' . $purpose);
+
+            /** @var Purpose */
+            $expectedPurpose = Purpose::fromSendingKey($this->key);
+            if (!$purpose->equals($expectedPurpose)) {
+                throw new InvalidPurposeException(
+                    'Invalid purpose. Expected '.$expectedPurpose->rawString()
+                    .', got ' . $purpose->rawString()
+                );
             }
+            $keyType = \get_class($this->key);
         }
 
         $this->cached = '';
@@ -516,7 +508,7 @@ class JsonToken
                 );
         }
         /** @var ProtocolInterface $protocol */
-        switch ($this->purpose) {
+        switch ($this->purpose->rawString()) {
             case 'local':
                 if ($this->key instanceof SymmetricKey) {
                     $this->cached = (string) $protocol::encrypt(
@@ -683,46 +675,7 @@ class JsonToken
      */
     public function withKey(KeyInterface $key, bool $checkPurpose = false): self
     {
-        $cloned = clone $this;
-        
-        if ($checkPurpose) {
-            switch ($cloned->purpose) {
-                case 'local':
-                    if (!($key instanceof SymmetricKey)) {
-                        throw new InvalidKeyException(
-                            'Invalid key type. Expected ' .
-                                SymmetricKey::class .
-                                ', got ' .
-                                \get_class($key)
-                        );
-                    }
-                    break;
-                case 'public':
-                    if (!($key instanceof AsymmetricSecretKey)) {
-                        throw new InvalidKeyException(
-                            'Invalid key type. Expected ' .
-                                AsymmetricSecretKey::class .
-                                ', got ' .
-                                \get_class($key)
-                        );
-                    }
-                    if (!\hash_equals($cloned->version, $key->getProtocol())) {
-                        throw new InvalidKeyException(
-                            'Invalid key type. This key is for ' .
-                                $key->getProtocol() .
-                                ', not ' .
-                                $cloned->version
-                        );
-                    }
-                    break;
-                default:
-                    throw new InvalidKeyException('Unknown purpose');
-            }
-        }
-
-        $cloned->cached = '';
-        $cloned->key = $key;
-        return $cloned;
+        return (clone $this)->setKey($key, $checkPurpose);
     }
 
     /**
@@ -733,57 +686,23 @@ class JsonToken
      */
     public function withNotBefore(\DateTime $time = null): self
     {
-        if (!$time) {
-            $time = new \DateTime('NOW');
-        }
-        $cloned = clone $this;
-        $cloned->cached = '';
-        $cloned->claims['nbf'] = $time->format(\DateTime::ATOM);
-        return $cloned;
+        return (clone $this)->setNotBefore($time);
     }
 
     /**
      * Return a new JsonToken instance with a new purpose.
      * Allowed values:
-     * 'local', 'public'.
+     * new Purpose('local'), new Purpose('public').
      *
-     * @param string $purpose
+     * @param Purpose $purpose
      * @param bool $checkKeyType
      * @return self
      * @throws InvalidKeyException
      * @throws InvalidPurposeException
      */
-    public function withPurpose(string $purpose, bool $checkKeyType = false): self
+    public function withPurpose(Purpose $purpose, bool $checkKeyType = false): self
     {
-        $cloned = clone $this;
-        if ($checkKeyType) {
-            if (\is_null($cloned->key)) {
-                throw new InvalidKeyException('Key cannot be null');
-            }
-            $keyType = \get_class($cloned->key);
-            switch ($keyType) {
-                case SymmetricKey::class:
-                    if (!\hash_equals('local', $purpose)) {
-                        throw new InvalidPurposeException(
-                            'Invalid purpose. Expected local, got ' . $purpose
-                        );
-                    }
-                    break;
-                case AsymmetricSecretKey::class:
-                    if (!\hash_equals('public', $purpose)) {
-                        throw new InvalidPurposeException(
-                            'Invalid purpose. Expected public, got ' . $purpose
-                        );
-                    }
-                    break;
-                default:
-                    throw new InvalidPurposeException('Unknown purpose: ' . $purpose);
-            }
-        }
-
-        $cloned->cached = '';
-        $cloned->purpose = $purpose;
-        return $cloned;
+        return (clone $this)->setPurpose($purpose, $checkKeyType);
     }
 
     /**

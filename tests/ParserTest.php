@@ -8,7 +8,10 @@ use ParagonIE\Paseto\Keys\{
     AsymmetricSecretKey,
     SymmetricKey
 };
-use ParagonIE\Paseto\Parser;
+use ParagonIE\Paseto\{
+    Parser,
+    Purpose
+};
 use ParagonIE\Paseto\Rules\NotExpired;
 use PHPUnit\Framework\TestCase;
 
@@ -30,7 +33,7 @@ class ParserTest extends TestCase
 
         $serialized = 'v2.local.3fNxan9FHjedQRSONRnT7Ce_KhhpB0NrlHwAGsCb54x0FhrjBfeNN4uPHFiO5H0iPCZSjwfEkkfiGeYpE6KAfr1Zm3G-VTe4lcXtgDyKATYULT-zLPfshRqisk4n7EbGufWuqilYvYXMCiYbaA';
         $parser = (new Parser())
-            ->setPurpose('local')
+            ->setPurpose(new Purpose('local'))
             ->setKey($key);
         $token = $parser->parse($serialized)
             ->setExplicitNonce($nonce);
@@ -62,7 +65,7 @@ class ParserTest extends TestCase
         $parser->parse($serialized);
 
         // Switch to asymmetric-key crypto:
-        $token->setPurpose('public')
+        $token->setPurpose(new Purpose('public'))
             ->setExplicitNonce($nonce)
             ->setKey(new AsymmetricSecretKey('YELLOW SUBMARINE, BLACK WIZARDRY'), true);
         $this->assertSame(
