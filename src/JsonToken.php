@@ -52,7 +52,7 @@ class JsonToken
     public function __construct()
     {
         // this is overridden in named constructors
-        $this->purpose = new Purpose('local');
+        $this->purpose = Purpose::local();
     }
 
     /**
@@ -67,7 +67,7 @@ class JsonToken
         $instance = new static();
         $instance->key = $key;
         $instance->version = $version;
-        $instance->purpose = new Purpose('local');
+        $instance->purpose = Purpose::local();
         return $instance;
     }
 
@@ -83,7 +83,7 @@ class JsonToken
         $instance = new static();
         $instance->key = $key;
         $instance->version = $version;
-        $instance->purpose = new Purpose('public');
+        $instance->purpose = Purpose::public();
         return $instance;
     }
 
@@ -418,7 +418,7 @@ class JsonToken
 
     /**
      * Set the purpose for this token. Allowed values:
-     * new Purpose('local'), new Purpose('public').
+     * Purpose::local(), Purpose::public().
      *
      * @param Purpose $purpose
      * @param bool $checkKeyType
@@ -692,7 +692,7 @@ class JsonToken
     /**
      * Return a new JsonToken instance with a new purpose.
      * Allowed values:
-     * new Purpose('local'), new Purpose('public').
+     * Purpose::local(), Purpose::public()
      *
      * @param Purpose $purpose
      * @param bool $checkKeyType
