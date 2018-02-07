@@ -158,8 +158,9 @@ class Parser
         }
 
         // Let's verify/decode according to the appropriate method:
-        switch ($purpose->rawString()) {
-            case 'local':
+
+        TSwitch::over($purpose,
+            new TCase(Purpose::local(), function () use ($pieces, $protocol, $tainted, &$footer, &$decoded): void {
                 $footer = (\count($pieces) > 3)
                     ? Base64UrlSafe::decode($pieces[3])
                     : '';
@@ -170,8 +171,8 @@ class Parser
                 } catch (\Throwable $ex) {
                     throw new PasetoException('An error occurred', 0, $ex);
                 }
-                break;
-            case 'public':
+            }),
+            new TCase(Purpose::public(), function () use ($pieces, $protocol, $tainted, &$footer, &$decoded): void {
                 $footer = (\count($pieces) > 4)
                     ? Base64UrlSafe::decode($pieces[4])
                     : '';
@@ -182,8 +183,8 @@ class Parser
                 } catch (\Throwable $ex) {
                     throw new PasetoException('An error occurred', 0, $ex);
                 }
-                break;
-        }
+            })
+        );
 
         // Did we get data?
         if (!isset($decoded)) {

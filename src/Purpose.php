@@ -9,7 +9,7 @@ use ParagonIE\Paseto\Keys\{
 };
 use ParagonIE\Paseto\Exception\InvalidPurposeException;
 
-final class Purpose
+final class Purpose implements Enumerable
 {
     const WHITELIST = [
         'local',
@@ -132,5 +132,26 @@ final class Purpose
         }
 
         return new self(self::$receivingKeyToPurpose[\get_class($key)]);
+    }
+
+    public static function equalStates(Enumerable $a, Enumerable $b): bool
+    {
+        /** @var self */
+        $a = $a;
+        /** @var self */
+        $b = $b;
+
+        return $a->equals($b);
+    }
+
+    /**
+     *
+     */
+    public static function enumerate(): array
+    {
+        return \array_map(
+            function (string $s): self { return new self($s); },
+            self::WHITELIST
+        );
     }
 }

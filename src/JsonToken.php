@@ -377,10 +377,9 @@ class JsonToken
                 );
             }
 
-            switch ($this->purpose->rawString()) {
-                case 'local':
-                    break;
-                case 'public':
+            TSwitch::over($this->purpose,
+                new TCase(Purpose::local(), function (): void {}),
+                new TCase(Purpose::public(), function () use ($key): void {
                     if (!\hash_equals($this->version, $key->getProtocol())) {
                         throw new InvalidKeyException(
                             'Invalid key type. This key is for ' .
@@ -389,10 +388,8 @@ class JsonToken
                                 $this->version
                         );
                     }
-                    break;
-                default:
-                    throw new InvalidKeyException('Unknown purpose');
-            }
+                })
+            );
         }
 
         $this->cached = '';
@@ -508,8 +505,9 @@ class JsonToken
                 );
         }
         /** @var ProtocolInterface $protocol */
-        switch ($this->purpose->rawString()) {
-            case 'local':
+        /** @var string $result */
+        $result = TSwitch::over($this->purpose,
+            new TCase(Purpose::local(), function() use ($protocol, $claims): string {
                 if ($this->key instanceof SymmetricKey) {
                     $this->cached = (string) $protocol::encrypt(
                         $claims,
@@ -519,8 +517,10 @@ class JsonToken
                     );
                     return $this->cached;
                 }
-                break;
-            case 'public':
+
+                throw new PasetoException('Unsupported key/purpose pairing.');
+            }),
+            new TCase(Purpose::public(), function() use ($protocol, $claims): string {
                 if ($this->key instanceof AsymmetricSecretKey) {
                     try {
                         $this->cached = (string) $protocol::sign(
@@ -533,9 +533,12 @@ class JsonToken
                         throw new PasetoException('Signing failed.', 0, $ex);
                     }
                 }
-                break;
-        }
-        throw new PasetoException('Unsupported key/purpose pairing.');
+
+                throw new PasetoException('Unsupported key/purpose pairing.');
+            })
+        );
+
+        return $result;
     }
 
     /**
